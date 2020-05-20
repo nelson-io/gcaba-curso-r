@@ -2,7 +2,6 @@
 
 library(tidyverse)
 library(rio)
-library(sf)
 library(lubridate)
 library(jsonlite)
 
@@ -121,7 +120,7 @@ km_extractor <- function(df){
                   api_key)
   
   JSON <-  fromJSON(txt = query)
-  km <- JSON$rows$elements[[1]]$distance$value/100 
+  km <- JSON$rows$elements[[1]]$distance$value/1000 
   
   return(km)
 }
@@ -134,8 +133,20 @@ for(i in 1:nrow(selection_1)){
   df <- slice(selection_1,i)
   km <- km_extractor(df)
   dist_matrix <- rbind(dist_matrix, cbind(df, dist_km = km))
+  if(i %% 10 == 0){print(i)}
 }
 
+# Ahora vemos para todos los casos las velocidades y observamos el histograma de las velocidades en km/h
+
+km_df <- recorridos %>% 
+  filter(id_estacion_origen == 1) %>% 
+  left_join(dist_matrix) %>% 
+  mutate(km_h = dist_km/(duracion_calculada/60)) %>% 
+  filter(km_h > 0)
+
+# hacemos histograma
+
+hist(km_df$km_h)
 
 
 
