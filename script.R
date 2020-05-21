@@ -4,6 +4,7 @@ library(tidyverse)
 library(rio)
 library(lubridate)
 library(jsonlite)
+library(sf)
 
 #importamos datos
 
@@ -148,22 +149,89 @@ km_df <- recorridos %>%
 
 hist(km_df$km_h)
 
+######################PARTE II#########################################
+
+# Ahora hacemos una consulta a la API para obtener de una sóla consulta todas las distancias 
+# primero determinamos todas las combinaciones únicas
+
+selection_2 <- recorridos %>% 
+  select(id_estacion_origen, id_estacion_destino, 
+         lat_estacion_origen,long_estacion_origen, 
+         lat_estacion_destino, long_estacion_destino) %>% 
+  unique() %>% 
+  filter(complete.cases(.))
+
+#generamos vector de origen y destino
+
+selection_2 <- selection_2 %>% 
+  mutate(origen = paste0(round(lat_estacion_origen,3),",",round(long_estacion_origen,3)),
+         destino = paste0(round(lat_estacion_destino,3),",", round(long_estacion_destino,3)))
+
+# armamos query
+origins <- str_flatten(selection_2$origen[1:3],collapse = "|")
+destinations <- str_flatten(selection_2$destino[1:3],collapse = "|")
+
+query <- paste0("https://api.distancematrix.ai/maps/api/distancematrix/json?&origins=",
+                origins, "&destinations=",
+                destinations,"&key=",
+                api_key)
+
+API_response <- fromJSON(txt = query)
+
+API_response$rows$elements[[1]]$distance$value/1000
+
+#### completar para extraer distancias de toda la base###
+
+
+# Ahora queremos observar los 10 destinos más frecuentes y los menos.
+
+freq_df <- rbind(
+  recorridos %>%
+    group_by(
+      id_estacion = id_estacion_destino,
+      latitud = lat_estacion_destino,
+      longitud = long_estacion_destino
+    ) %>%
+    summarise(total = n()) %>%
+    arrange(desc(total)) %>%
+    head(10) %>%
+    mutate(tipo = "Más frecuentes") %>% 
+    ungroup(),
+  
+  
+  recorridos %>%
+    filter(id_estacion_destino != 0) %>%
+    group_by(
+      id_estacion = id_estacion_destino,
+      latitud = lat_estacion_destino,
+      longitud = long_estacion_destino
+    ) %>%
+    summarise(total = n()) %>%
+    arrange(desc(total)) %>%
+    tail(10) %>%
+    mutate(tipo = "Menos frecuentes") %>% 
+    ungroup()
+)
+
+### Vamos a visualizarlos en el mapa
+
+#los convertimos en un dataframe geo espacial
 
 
 
+geo_freq <- st_as_sf(freq_df,coords = c("longitud", "latitud")) %>% 
+  st_set_crs(4326)
 
+#descargamos geojson de caba
 
+caba <- st_read("http://cdn.buenosaires.gob.ar/datosabiertos/datasets/comunas/CABA_comunas.geojson")
 
-
-
-
-
-
-
-
-
-
-
+ggplot(data = caba) +
+  geom_sf()+
+  geom_sf(data = geo_freq, aes(col = tipo, size = total), alpha = .6)+
+  theme_bw()+
+  ggtitle("destinos más y menos frecuentes de ECOBICIS")
+  
 
 
 
