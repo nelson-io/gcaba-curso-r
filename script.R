@@ -1,4 +1,4 @@
-# Activamos paquetes
+`# Activamos paquetes
 
 library(tidyverse)
 library(rio)
@@ -95,6 +95,8 @@ recorridos %>%
   View()
 
 
+######################PARTE II#########################################
+
 
 #calculamos distancia entre cada una de las estaciones  y obtenemos velocidad promedio de todas las que salieron de la 
 # estacion 1
@@ -104,83 +106,91 @@ selection_1 <- recorridos %>%
   select(id_estacion_origen, id_estacion_destino, 
          lat_estacion_origen,long_estacion_origen, 
          lat_estacion_destino, long_estacion_destino) %>% 
-  filter(id_estacion_origen == 1) %>% 
-  unique()
+  filter(id_estacion_origen == 175) %>% 
+  group_by(id_estacion_destino) %>% 
+  mutate(total = n()) %>%
+  ungroup() %>% 
+  filter(total >100) %>% 
+  unique() %>% 
+  filter(complete.cases(.))
 
 # seteamos nuestra API key para consumir datos de la API de DISTANCEMATRIX AI
-api_key <- "0cEhha2C4kXOsHHxb9T6IHvrJpwsC"
+api_key <- import("api_key.txt")
 
 #definimos una función que genera la consulta a la API y extrae la distancia en kilómetros
 
 km_extractor <- function(df){
-  query <- paste0("https://api.distancematrix.ai/maps/api/distancematrix/json?&origins=",
+  query <- paste0("https://maps.googleapis.com/maps/api/distancematrix/json?mode=bycicling&origins=",
                   df$lat_estacion_origen, ",",
                   df$long_estacion_origen, "&destinations=",
                   df$lat_estacion_destino, ",",
                   df$long_estacion_destino, "&key=",
                   api_key)
+
   
   JSON <-  fromJSON(txt = query)
-  km <- JSON$rows$elements[[1]]$distance$value/1000 
+  km_api <- JSON$rows$elements[[1]][[1]][[2]]/1000 
+  mins_api <- JSON$rows$elements[[1]][[2]][[2]]/60 
   
-  return(km)
+  return(data.frame(km_api = km_api,
+                    mins_api = mins_api))
 }
 
 # Hacemos loop para iterar sobre el dataframe y generar la columna de distancia
 
-dist_matrix <- data.frame()
+selection_1 %>% slice(1) %>% km_extractor()
 
-for(i in 1:nrow(selection_1)){
+
+dist_frame <- data.frame()
+
+for(i in seq_along(selection_1$id_estacion_origen)){
   df <- slice(selection_1,i)
   km <- km_extractor(df)
-  dist_matrix <- rbind(dist_matrix, cbind(df, dist_km = km))
+  dist_frame <- rbind(dist_frame, cbind(df, dist_km = km))
   if(i %% 10 == 0){print(i)}
 }
 
 # Ahora vemos para todos los casos las velocidades y observamos el histograma de las velocidades en km/h
 
 km_df <- recorridos %>% 
-  filter(id_estacion_origen == 1) %>% 
-  left_join(dist_matrix) %>% 
-  mutate(km_h = dist_km/(duracion_calculada/60)) %>% 
+  filter(id_estacion_origen == 175) %>% 
+  left_join(dist_frame) %>% 
+  mutate(km_h = dist_km.km_api/(duracion_calculada/60),
+         km_h.api = dist_km.km_api/(dist_km.mins_api/60)) %>% 
   filter(km_h > 0)
 
 # hacemos histograma
+ggplot(km_df)+
+  geom_histogram(aes(x = km_h)) +
+  scale_x_log10()
 
-hist(km_df$km_h)
+# boxplot
+ggplot(km_df)+
+  geom_boxplot(aes(y = km_h))+
+  lims(y=c(0,30))
 
-######################PARTE II#########################################
+#estadísticas
+summary(km_df$km_h)
 
-# Ahora hacemos una consulta a la API para obtener de una sóla consulta todas las distancias 
-# primero determinamos todas las combinaciones únicas
 
-selection_2 <- recorridos %>% 
-  select(id_estacion_origen, id_estacion_destino, 
-         lat_estacion_origen,long_estacion_origen, 
-         lat_estacion_destino, long_estacion_destino) %>% 
-  unique() %>% 
-  filter(complete.cases(.))
+# vemos para cada recorrido, la distribución
 
-#generamos vector de origen y destino
+for(i in unique(km_df$id_estacion_destino)){
+  df <- km_df %>% 
+    filter(id_estacion_destino == i,
+           km_h<40)
+  
+  plot <- ggplot(df)+
+    geom_histogram(aes(x= km_h))+
+    geom_vline(aes(xintercept = mean(km_h.api)), col = 'red')+
+    ggtitle(paste0("Origen:",unique(df$nombre_estacion_origen),"\n",
+                   "Destino:",unique(df$nombre_estacion_destino)))
+  
+  print(plot)
+}
 
-selection_2 <- selection_2 %>% 
-  mutate(origen = paste0(round(lat_estacion_origen,3),",",round(long_estacion_origen,3)),
-         destino = paste0(round(lat_estacion_destino,3),",", round(long_estacion_destino,3)))
 
-# armamos query
-origins <- str_flatten(selection_2$origen[1:3],collapse = "|")
-destinations <- str_flatten(selection_2$destino[1:3],collapse = "|")
 
-query <- paste0("https://api.distancematrix.ai/maps/api/distancematrix/json?&origins=",
-                origins, "&destinations=",
-                destinations,"&key=",
-                api_key)
-
-API_response <- fromJSON(txt = query)
-
-API_response$rows$elements[[1]]$distance$value/1000
-
-#### completar para extraer distancias de toda la base###
 
 
 # Ahora queremos observar los 10 destinos más frecuentes y los menos.
@@ -230,7 +240,7 @@ ggplot(data = caba) +
   geom_sf()+
   geom_sf(data = geo_freq, aes(col = tipo, size = total), alpha = .6)+
   theme_bw()+
-  ggtitle("destinos más y menos frecuentes de ECOBICIS")
+  ggtitle("Destinos más y menos frecuentes de ECOBICIS")
   
 
 
@@ -248,3 +258,4 @@ ggplot(data = caba) +
 
 
 
+`
