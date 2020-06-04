@@ -99,7 +99,7 @@ recorridos %>%
 
 
 #calculamos distancia entre cada una de las estaciones  y obtenemos velocidad promedio de todas las que salieron de la 
-# estacion 1
+# estacion 175
 
 # primero armamos matriz de origen destino con todas las posibilidades
 selection_1 <- recorridos %>% 
